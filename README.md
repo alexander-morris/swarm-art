@@ -171,4 +171,72 @@ Each error case provides specific feedback and appropriate score penalties.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+# Vennkoii Swarm Art
+
+A collaborative art generation system using swarm intelligence and consensus algorithms.
+
+## Setup
+
+1. Clone the repository:
+```bash
+git clone https://github.com/alexander-morris/swarm-art.git
+cd swarm-art
+```
+
+2. Create a virtual environment and install dependencies:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+3. Set up environment variables:
+   - Copy `.env.template` to `.env`
+   - Add your OpenAI API key to `.env`
+   - Adjust other settings as needed
+
+## Environment Variables
+
+The following environment variables are required:
+
+- `OPENAI_API_KEY`: Your OpenAI API key
+- `DEBUG`: Set to "true" for debug mode (default: false)
+- `LOG_LEVEL`: Logging level (default: INFO)
+- `OUTPUT_DIR`: Directory for output files (default: output)
+- `BACKUP_INTERVAL`: Interval for state backups (default: 3)
+
+## Animation Settings
+
+The following settings can be adjusted in `.env`:
+
+- `BASE_DURATION`: Base duration for animations (default: 2.0)
+- `RADIUS_SCALE`: Scale factor for radius animations (default: 1.25)
+- `BRIGHTNESS`: Brightness level (default: 2.5)
+- `SATURATION`: Saturation level (default: 2.0)
+- `GLOW`: Glow effect intensity (default: 4.5)
+
+## Security
+
+- Never commit your `.env` file
+- Keep your API keys secure
+- Use environment variables for sensitive data
+- Check the `.gitignore` file to ensure sensitive files are excluded
+
+## Running Tests
+
+```bash
+python tests/continuous_test_runner.py
+```
+
+## Contributing
+
+1. Create a new branch for your feature
+2. Make your changes
+3. Run tests to ensure everything works
+4. Create a pull request
+
+## License
+
+MIT License - See LICENSE file for details 
