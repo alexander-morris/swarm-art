@@ -9,6 +9,7 @@ from PIL import Image, ImageTk
 import io
 import re
 from datetime import datetime
+import logging
 
 # Add project root to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +21,7 @@ from src.utils.svg_validator import SVGValidator
 from src.utils.feedback_parser import FeedbackParser
 from src.agents.director import DirectorAgent
 from src.utils.agent_memory import AgentMemory
+from src.config.agent_config import DEFAULT_DIRECTOR_CONFIG
 
 class TestDisplay:
     def __init__(self):
@@ -41,17 +43,14 @@ class TestDisplay:
         # Create agent output frames
         self.create_agent_outputs()
         
-        # Initialize agents
+        # Initialize agents with config if available
+        if hasattr(self, 'config'):
+            self.director = DirectorAgent(self.config)
+        else:
+            self.director = DirectorAgent(DEFAULT_DIRECTOR_CONFIG)
+            
         self.designer = DesignerAgent()
         self.critic = CriticAgent()
-        self.director = DirectorAgent()
-        self.memory = AgentMemory()
-        self.iteration = 0
-        self.max_iterations = 10
-        self.output_dir = "output"
-        
-        # Create output directory if it doesn't exist
-        os.makedirs(self.output_dir, exist_ok=True)
         
         # Load initial parameters
         self.load_parameters()
@@ -139,13 +138,34 @@ class TestDisplay:
     def create_svg_with_parameters(self, step):
         """Create SVG with current parameters."""
         try:
-            # Calculate positions for Venn diagram style overlap
+            # Get performance history to adjust parameters
+            history = self.director.get_iteration_history()
+            last_metrics = {}
+            if history:
+                last_feedback = self.memory.get_feedback_history("designer")
+                if last_feedback:
+                    last_metrics = last_feedback[-1].get("metrics", {})
+            
+            # Adjust parameters based on feedback
             center_x = 400
             center_y = 300
-            radius = 120
-            offset = 80  # Increased overlap between circles
+            radius = 120 + (step * 5)  # Gradually increase size
+            offset = 80 - (step * 2)  # Gradually increase overlap
             
-            # Create base SVG with multiple circles
+            # Adjust visual parameters based on metrics
+            brightness = 2.5
+            saturation = 2.0
+            glow = 4.5
+            
+            if last_metrics:
+                if last_metrics.get("brightness", 0.7) < 0.6:
+                    brightness += 0.5
+                if last_metrics.get("color_variety", 0.9) < 0.6:
+                    saturation += 0.5
+                if last_metrics.get("contrast", 0.8) < 0.6:
+                    glow += 1.0
+            
+            # Create base SVG with adjusted parameters
             svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600">
     <defs>
@@ -154,7 +174,7 @@ class TestDisplay:
             <stop offset="100%" style="stop-color:#333333;stop-opacity:1" />
         </linearGradient>
         <filter id="glow">
-            <feGaussianBlur stdDeviation="4.5" result="coloredBlur"/>
+            <feGaussianBlur stdDeviation="{glow}" result="coloredBlur"/>
             <feMerge>
                 <feMergeNode in="coloredBlur"/>
                 <feMergeNode in="SourceGraphic"/>
@@ -162,13 +182,13 @@ class TestDisplay:
         </filter>
         <filter id="brightness">
             <feComponentTransfer>
-                <feFuncR type="linear" slope="2.5"/>
-                <feFuncG type="linear" slope="2.5"/>
-                <feFuncB type="linear" slope="2.5"/>
+                <feFuncR type="linear" slope="{brightness}"/>
+                <feFuncG type="linear" slope="{brightness}"/>
+                <feFuncB type="linear" slope="{brightness}"/>
             </feComponentTransfer>
         </filter>
         <filter id="saturation">
-            <feColorMatrix type="saturate" values="2.0"/>
+            <feColorMatrix type="saturate" values="{saturation}"/>
         </filter>
     </defs>
     <rect width="100%" height="100%" fill="url(#bgGradient)"/>
@@ -177,66 +197,50 @@ class TestDisplay:
     <circle cx="{center_x - offset}" cy="{center_y}" r="{radius}" 
             fill="#ff00ff"
             filter="url(#glow) url(#brightness) url(#saturation)" opacity="1.0">
-        <animate attributeName="r" dur="4s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#ff00ff;#00ffff;#ff00ff" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="r" dur="{4 - step * 0.2}s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="fill" dur="{8 - step * 0.4}s" values="#ff00ff;#00ffff;#ff00ff" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
     </circle>
     
     <!-- Second circle -->
     <circle cx="{center_x + offset}" cy="{center_y}" r="{radius}"
             fill="#00ffff"
             filter="url(#glow) url(#brightness) url(#saturation)" opacity="1.0">
-        <animate attributeName="r" dur="4s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#00ffff;#ff00ff;#00ffff" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="r" dur="{4 - step * 0.2}s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="fill" dur="{8 - step * 0.4}s" values="#00ffff;#ff00ff;#00ffff" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
     </circle>
     
     <!-- Third circle -->
     <circle cx="{center_x}" cy="{center_y + offset}" r="{radius}"
             fill="#ffff00"
             filter="url(#glow) url(#brightness) url(#saturation)" opacity="1.0">
-        <animate attributeName="r" dur="4s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#ffff00;#ff00ff;#ffff00" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="r" dur="{4 - step * 0.2}s" values="{radius};{radius + 40};{radius}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="fill" dur="{8 - step * 0.4}s" values="#ffff00;#ff00ff;#ffff00" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
     </circle>
     
     <!-- Additional decorative circles -->
     <circle cx="{center_x}" cy="{center_y}" r="{radius * 0.5}"
             fill="#ff8800"
             filter="url(#glow) url(#brightness) url(#saturation)" opacity="0.9">
-        <animate attributeName="r" dur="4s" values="{radius * 0.5};{radius * 0.8};{radius * 0.5}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#ff8800;#ff00ff;#ff8800" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-    </circle>
-    
-    <!-- Additional accent circle -->
-    <circle cx="{center_x + offset * 0.5}" cy="{center_y - offset * 0.5}" r="{radius * 0.3}"
-            fill="#00ff88"
-            filter="url(#glow) url(#brightness) url(#saturation)" opacity="0.8">
-        <animate attributeName="r" dur="4s" values="{radius * 0.3};{radius * 0.5};{radius * 0.3}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#00ff88;#ff00ff;#00ff88" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-    </circle>
-    
-    <!-- Additional accent circle 2 -->
-    <circle cx="{center_x - offset * 0.5}" cy="{center_y - offset * 0.5}" r="{radius * 0.3}"
-            fill="#ff0088"
-            filter="url(#glow) url(#brightness) url(#saturation)" opacity="0.8">
-        <animate attributeName="r" dur="4s" values="{radius * 0.3};{radius * 0.5};{radius * 0.3}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
-        <animate attributeName="fill" dur="8s" values="#ff0088;#ff00ff;#ff0088" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="r" dur="{4 - step * 0.2}s" values="{radius * 0.5};{radius * 0.8};{radius * 0.5}" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+        <animate attributeName="fill" dur="{8 - step * 0.4}s" values="#ff8800;#ff00ff;#ff8800" repeatCount="indefinite" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
     </circle>
 </svg>'''
             
             # Log designer's output
-            self.update_agent_output("designer", f"Generated frame {step + 1} with overlapping circles in Venn diagram style")
+            self.logger.info(f"Generated frame {step + 1} with parameters: brightness={brightness}, saturation={saturation}, glow={glow}")
             
             # Validate the SVG before returning
             validation = SVGValidator.validate_all(svg_content)
             if not validation["is_valid"]:
-                print("\nSVG Validation Errors:")
+                self.logger.error("SVG Validation Errors:")
                 for error in validation["errors"]:
-                    print(f"- {error}")
+                    self.logger.error(f"- {error}")
                 return None
             
             return svg_content
             
         except Exception as e:
-            self.status_label.config(text=f"Error creating SVG: {str(e)}")
+            self.logger.error(f"Error creating SVG: {e}")
             return None
     
     def display_svg(self, svg_content):
@@ -337,24 +341,79 @@ class TestDisplay:
         """Start the test display."""
         self.root.mainloop()
 
-class ContinuousTestRunner:
+class ContinuousTestRunner(TestDisplay):
     def __init__(self):
-        self.director = DirectorAgent()
+        # Initialize configuration first
+        self.config = DEFAULT_DIRECTOR_CONFIG
+        
+        # Initialize logging
+        self.setup_logging()
+        
+        # Initialize parent class with config
+        super().__init__()
+        
+        # Initialize agents and memory
+        self.director = DirectorAgent(self.config)
+        self.designer = DesignerAgent()
+        self.critic = CriticAgent()
         self.memory = AgentMemory()
         self.iteration = 0
-        self.max_iterations = 10
+        self.max_iterations = self.config["max_iterations"]
         self.output_dir = "output"
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
         
-    def run_iteration(self):
-        """Run one iteration of the test."""
+        # Load previous state if available
+        self.load_previous_state()
+        
+    def setup_logging(self):
+        """Setup logging configuration."""
+        log_config = DEFAULT_DIRECTOR_CONFIG["logging"]
+        if log_config["enabled"]:
+            os.makedirs(os.path.dirname(log_config["file"]), exist_ok=True)
+            logging.basicConfig(
+                level=log_config["level"],
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_config["file"]),
+                    logging.StreamHandler()
+                ]
+            )
+        self.logger = logging.getLogger(__name__)
+        
+    def load_previous_state(self):
+        """Load previous state if available."""
         try:
+            memory_path = self.config["memory_path"]
+            if os.path.exists(memory_path):
+                self.logger.info("Loading previous state...")
+                self.director.load_state(memory_path)
+                self.iteration = len(self.director.get_iteration_history())
+                self.logger.info(f"Loaded previous state. Starting from iteration {self.iteration}")
+        except Exception as e:
+            self.logger.error(f"Error loading previous state: {e}")
+            
+    def backup_state(self):
+        """Backup current state."""
+        try:
+            if self.iteration % self.config["auto_recovery"]["backup_interval"] == 0:
+                backup_path = os.path.join(self.output_dir, f"backup_state_{self.iteration}.json")
+                self.director.save_state(backup_path)
+                self.logger.info(f"State backed up to {backup_path}")
+        except Exception as e:
+            self.logger.error(f"Error backing up state: {e}")
+            
+    def run_iteration(self):
+        """Run one iteration of the test with error handling and recovery."""
+        try:
+            self.logger.info(f"Starting iteration {self.iteration + 1}")
+            
             # Generate SVG
             svg_content = self.create_svg_with_parameters(self.iteration)
             if not svg_content:
-                return False
+                self.logger.error("Failed to generate SVG content")
+                return self.handle_error("svg_generation")
                 
             # Save SVG
             svg_path = os.path.join(self.output_dir, f"frame_{self.iteration}.svg")
@@ -371,68 +430,180 @@ class ContinuousTestRunner:
             )
             
             # Save state
-            self.director.save_state(os.path.join(self.output_dir, "director_state.json"))
+            self.director.save_state(self.config["memory_path"])
+            self.backup_state()
             
-            # Print progress
-            print(f"\nIteration {self.iteration + 1} complete:")
-            print(f"Score: {result['score']:.2f}")
-            print("\nPriority Improvements:")
+            # Log progress
+            self.logger.info(f"Iteration {self.iteration + 1} complete - Score: {result['score']:.2f}")
+            self.logger.info("Priority Improvements:")
             for imp in result["instructions"]["designer"]["priority_improvements"]:
-                print(f"- {imp}")
-            print("\nSecondary Improvements:")
-            for imp in result["instructions"]["designer"]["secondary_improvements"]:
-                print(f"- {imp}")
+                self.logger.info(f"- {imp}")
                 
             self.iteration += 1
             return result["should_continue"]
             
         except Exception as e:
-            print(f"Error in iteration {self.iteration}: {str(e)}")
+            self.logger.error(f"Error in iteration {self.iteration}: {e}")
+            return self.handle_error("iteration")
+            
+    def handle_error(self, error_type: str) -> bool:
+        """Handle errors with retry logic."""
+        if not self.config["auto_recovery"]["enabled"]:
             return False
             
-    def run(self):
-        """Run continuous test iterations."""
-        print("Starting continuous test runner...")
+        retries = self.config["auto_recovery"]["max_retries"]
+        delay = self.config["auto_recovery"]["retry_delay"]
         
-        while self.iteration < self.max_iterations:
-            should_continue = self.run_iteration()
-            if not should_continue:
-                print("\nStopping iterations - convergence reached or maximum iterations hit")
-                break
-                
-        print("\nTest run complete!")
-        print(f"Total iterations: {self.iteration}")
-        
-        # Print final statistics
-        history = self.director.get_iteration_history()
-        if history:
-            final_score = history[-1]["score"]
-            print(f"Final score: {final_score:.2f}")
+        while retries > 0:
+            self.logger.warning(f"Attempting recovery for {error_type} error. Retries left: {retries}")
+            time.sleep(delay)
             
-            if len(history) > 1:
-                initial_score = history[0]["score"]
-                improvement = final_score - initial_score
-                print(f"Total improvement: {improvement:.2f}")
+            try:
+                if error_type == "svg_generation":
+                    svg_content = self.create_svg_with_parameters(self.iteration)
+                    if svg_content:
+                        self.logger.info("Recovery successful")
+                        return True
+                elif error_type == "iteration":
+                    # Try to restore from last backup
+                    backup_files = sorted([f for f in os.listdir(self.output_dir) if f.startswith("backup_state_")])
+                    if backup_files:
+                        latest_backup = backup_files[-1]
+                        self.director.load_state(os.path.join(self.output_dir, latest_backup))
+                        self.logger.info(f"Restored from backup: {latest_backup}")
+                        return True
+            except Exception as e:
+                self.logger.error(f"Recovery attempt failed: {e}")
                 
+            retries -= 1
+            
+        self.logger.error(f"Recovery failed after {self.config['auto_recovery']['max_retries']} attempts")
+        return False
+        
+    def run(self):
+        """Run continuous test iterations with monitoring."""
+        self.logger.info("Starting continuous test runner...")
+        
+        try:
+            while self.iteration < self.max_iterations:
+                should_continue = self.run_iteration()
+                if not should_continue:
+                    self.logger.info("Stopping iterations - convergence reached or maximum iterations hit")
+                    break
+                    
+            self.logger.info("Test run complete!")
+            self.logger.info(f"Total iterations: {self.iteration}")
+            
+            # Print final statistics
+            history = self.director.get_iteration_history()
+            if history:
+                final_score = history[-1]["score"]
+                self.logger.info(f"Final score: {final_score:.2f}")
+                
+                if len(history) > 1:
+                    initial_score = history[0]["score"]
+                    improvement = final_score - initial_score
+                    self.logger.info(f"Total improvement: {improvement:.2f}")
+                    
+        except KeyboardInterrupt:
+            self.logger.info("Test run interrupted by user")
+            self.director.save_state(self.config["memory_path"])
+            self.logger.info("State saved successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Unexpected error in test run: {e}")
+            self.director.save_state(self.config["memory_path"])
+            self.logger.error("State saved despite error")
+            
     def analyze_svg(self, svg_content):
         """Analyze SVG and return metrics."""
-        # Add your existing SVG analysis code here
-        return {
-            "score": 0.8,  # Example score
-            "visual_metrics": {
-                "brightness": 0.7,
-                "contrast": 0.8,
-                "color_variety": 0.9
-            },
-            "feedback": [
-                "Good use of color transitions",
-                "Consider improving animation timing"
-            ],
-            "suggestions": [
-                "Increase brightness in darker regions",
-                "Add more variety to animation durations"
-            ]
-        }
+        try:
+            # Extract metrics from SVG content using more robust regex patterns
+            brightness_match = re.search(r'<feFuncR type="linear" slope="([^"]+)"', svg_content)
+            brightness_value = float(brightness_match.group(1)) if brightness_match else 2.5
+            
+            saturation_match = re.search(r'<feColorMatrix type="saturate" values="([^"]+)"', svg_content)
+            saturation_value = float(saturation_match.group(1)) if saturation_match else 2.0
+            
+            glow_match = re.search(r'<feGaussianBlur stdDeviation="([^"]+)"', svg_content)
+            glow_value = float(glow_match.group(1)) if glow_match else 4.5
+            
+            # Calculate normalized scores
+            brightness_score = min(brightness_value / 4.0, 1.0)
+            saturation_score = min(saturation_value / 3.0, 1.0)
+            contrast_score = min(glow_value / 6.0, 1.0)
+            
+            # Calculate color variety score
+            unique_colors = set(re.findall(r'#[0-9a-fA-F]{6}', svg_content))
+            color_variety_score = min(len(unique_colors) / 10.0, 1.0)
+            
+            # Calculate animation smoothness
+            animation_times = [float(t.replace('s', '')) for t in re.findall(r'dur="([^"]+)s"', svg_content)]
+            if animation_times:
+                animation_smoothness = 1.0 - (max(animation_times) - min(animation_times)) / max(animation_times)
+            else:
+                animation_smoothness = 0.5
+            
+            # Calculate overall score with weighted components
+            weights = self.config["analysis_weights"]
+            overall_score = (
+                weights["brightness"] * brightness_score +
+                weights["contrast"] * contrast_score +
+                weights["color_variety"] * color_variety_score +
+                weights["distribution"] * animation_smoothness +
+                weights["animation_smoothness"] * animation_smoothness
+            )
+            
+            # Generate feedback and suggestions
+            feedback = []
+            suggestions = []
+            
+            if brightness_score < 0.6:
+                feedback.append("Brightness levels are too low")
+                suggestions.append("Increase brightness values")
+            if contrast_score < 0.6:
+                feedback.append("Contrast could be improved")
+                suggestions.append("Increase glow effect and color contrast")
+            if color_variety_score < 0.6:
+                feedback.append("Limited color palette")
+                suggestions.append("Add more unique colors to the design")
+            if animation_smoothness < 0.6:
+                feedback.append("Animation timing variations are too extreme")
+                suggestions.append("Make animation durations more consistent")
+            
+            # Log analysis results
+            self.logger.info(f"Analysis results:")
+            self.logger.info(f"- Brightness: {brightness_score:.2f}")
+            self.logger.info(f"- Contrast: {contrast_score:.2f}")
+            self.logger.info(f"- Color variety: {color_variety_score:.2f}")
+            self.logger.info(f"- Animation smoothness: {animation_smoothness:.2f}")
+            self.logger.info(f"- Overall score: {overall_score:.2f}")
+            
+            return {
+                "score": overall_score,
+                "visual_metrics": {
+                    "brightness": brightness_score,
+                    "contrast": contrast_score,
+                    "color_variety": color_variety_score,
+                    "animation_smoothness": animation_smoothness
+                },
+                "feedback": feedback,
+                "suggestions": suggestions
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing SVG: {e}")
+            return {
+                "score": 0.5,
+                "visual_metrics": {
+                    "brightness": 0.5,
+                    "contrast": 0.5,
+                    "color_variety": 0.5,
+                    "animation_smoothness": 0.5
+                },
+                "feedback": ["Error analyzing SVG content"],
+                "suggestions": ["Check SVG generation parameters"]
+            }
         
 if __name__ == "__main__":
     runner = ContinuousTestRunner()
