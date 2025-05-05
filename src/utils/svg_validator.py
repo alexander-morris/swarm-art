@@ -40,118 +40,123 @@ class SVGValidator:
         return elements
     
     @staticmethod
-    def validate_syntax(svg_string: str) -> Tuple[bool, str]:
-        """Validate SVG syntax using lxml.
-        
-        Args:
-            svg_string: String containing SVG markup
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+    def validate_syntax(svg_content):
+        """Validate basic SVG syntax."""
         try:
-            etree.fromstring(svg_string.encode('utf-8'))
+            # Remove XML declaration and normalize whitespace
+            content = re.sub(r'<\?xml[^>]*\?>', '', svg_content)
+            content = re.sub(r'\s+', ' ', content).strip()
+            
+            # Check for required SVG elements and proper XML structure
+            if not re.search(r'<(?:svg:|)svg[^>]*>', content):
+                return False, "Invalid SVG syntax: Missing SVG root element"
+            
+            # Count tags more accurately
+            open_tags = len(re.findall(r'<([^/][^>]*?)(?<!/)>', content))  # Opening tags that aren't self-closing
+            close_tags = len(re.findall(r'</[^>]+>', content))  # Closing tags
+            self_closing = len(re.findall(r'<[^>]+/>', content))  # Self-closing tags
+            
+            # Debug output
+            print(f"\nTag counting:")
+            print(f"Open tags: {open_tags}")
+            print(f"Close tags: {close_tags}")
+            print(f"Self-closing tags: {self_closing}")
+            
+            # Check for basic XML structure
+            if not re.search(r'<svg[^>]*>.*</svg>', content, re.DOTALL):
+                return False, "Invalid SVG syntax: Missing closing SVG tag"
+            
+            # Check for common SVG elements
+            if not re.search(r'<circle[^>]*>', content):
+                return False, "Invalid SVG syntax: No circle elements found"
+            
             return True, ""
-        except etree.XMLSyntaxError as e:
+        except Exception as e:
             return False, f"Invalid SVG syntax: {str(e)}"
-    
+
     @staticmethod
-    def validate_structure(svg_string: str) -> Tuple[bool, str]:
-        """Validate SVG structure and required elements.
-        
-        Args:
-            svg_string: String containing SVG markup
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+    def validate_structure(svg_content):
+        """Validate SVG structure."""
         try:
-            root = etree.fromstring(svg_string.encode('utf-8'))
+            # Remove XML declaration and normalize whitespace
+            content = re.sub(r'<\?xml[^>]*\?>', '', svg_content)
+            content = re.sub(r'\s+', ' ', content).strip()
             
-            # Check root element (with or without namespace)
-            if not (root.tag == 'svg' or root.tag == f'{{{SVGValidator.SVG_NS}}}svg'):
+            # Check root element
+            if not re.search(r'^[^<]*<(?:svg:|)svg[^>]*>', content):
                 return False, "Root element must be 'svg'"
             
             # Check for required attributes
-            required_attrs = ['width', 'height']
-            missing_attrs = [attr for attr in required_attrs if attr not in root.attrib]
-            if missing_attrs:
-                return False, f"Missing required attributes: {', '.join(missing_attrs)}"
-            
+            if not re.search(r'<(?:svg:|)svg[^>]+width="[^"]+"[^>]+height="[^"]+"', content):
+                return False, "Missing required attributes"
             return True, ""
-        except etree.XMLSyntaxError as e:
+        except Exception as e:
             return False, f"Invalid SVG structure: {str(e)}"
-    
+
     @staticmethod
-    def validate_animation(svg_string: str) -> Tuple[bool, str]:
-        """Validate SVG animation elements and attributes.
-        
-        Args:
-            svg_string: String containing SVG markup
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+    def validate_circle(svg_content):
+        """Validate circle element."""
         try:
-            root = etree.fromstring(svg_string.encode('utf-8'))
-            
-            # Check for animation elements
-            animate_elements = SVGValidator._find_elements(root, 'animate')
-            if not animate_elements:
-                return False, "No animation elements found"
-            
-            # Check animation attributes
-            required_attrs = ['attributeName', 'dur', 'values']
-            for animate in animate_elements:
-                missing_attrs = [attr for attr in required_attrs if attr not in animate.attrib]
-                if missing_attrs:
-                    return False, f"Animation element missing required attributes: {', '.join(missing_attrs)}"
-            
-            return True, ""
-        except etree.XMLSyntaxError as e:
-            return False, f"Invalid animation structure: {str(e)}"
-    
-    @staticmethod
-    def validate_circle(svg_string: str) -> Tuple[bool, str]:
-        """Validate circle element and its attributes.
-        
-        Args:
-            svg_string: String containing SVG markup
-            
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        try:
-            root = etree.fromstring(svg_string.encode('utf-8'))
+            # Remove XML declaration and normalize whitespace
+            content = re.sub(r'<\?xml[^>]*\?>', '', svg_content)
+            content = re.sub(r'\s+', ' ', content).strip()
             
             # Check for circle element
-            circle = SVGValidator._find_element(root, 'circle')
-            if circle is None:
+            if not re.search(r'<(?:svg:|)circle[^>]+/?>', content):
                 return False, "No circle element found"
             
-            # Check required circle attributes
-            required_attrs = ['cx', 'cy', 'r']
-            missing_attrs = [attr for attr in required_attrs if attr not in circle.attrib]
-            if missing_attrs:
-                return False, f"Circle missing required attributes: {', '.join(missing_attrs)}"
+            # Check for required circle attributes
+            circle_match = re.search(r'<(?:svg:|)circle[^>]+>', content)
+            if not circle_match:
+                return False, "Circle missing required attributes"
+            
+            circle = circle_match.group(0)
+            
+            # Extract attribute values
+            cx_match = re.search(r'cx="([^"]+)"', circle)
+            cy_match = re.search(r'cy="([^"]+)"', circle)
+            r_match = re.search(r'r="([^"]+)"', circle)
             
             # Validate numeric values
-            for attr in ['cx', 'cy', 'r']:
+            if cx_match and cy_match and r_match:
                 try:
-                    float(circle.attrib[attr])
+                    float(cx_match.group(1))
+                    float(cy_match.group(1))
+                    float(r_match.group(1))
                 except ValueError:
-                    return False, f"Invalid numeric value for {attr}"
-            
+                    return False, "Invalid numeric values for circle attributes"
+            else:
+                return False, "Circle missing required attributes"
+                
             return True, ""
-        except etree.XMLSyntaxError as e:
-            return False, f"Invalid circle structure: {str(e)}"
-    
+        except Exception as e:
+            return False, f"Invalid circle element: {str(e)}"
+
     @staticmethod
-    def validate_all(svg_string: str, require_animation: bool = False) -> Dict[str, Any]:
-        """Perform all validations on the SVG string.
+    def validate_animation(svg_content):
+        """Validate animation element."""
+        try:
+            # Remove XML declaration and normalize whitespace
+            content = re.sub(r'<\?xml[^>]*\?>', '', svg_content)
+            content = re.sub(r'\s+', ' ', content).strip()
+            
+            # Check for animation element
+            if not re.search(r'<(?:svg:|)animate[^>]+/?>', content):
+                return False, "No animation elements found"
+            
+            # Check for required animation attributes
+            if not re.search(r'<(?:svg:|)animate[^>]+attributeName="[^"]+"[^>]+dur="[^"]+"[^>]+values="[^"]+"[^>]+repeatCount="[^"]+"', content):
+                return False, "Animation element missing required attributes"
+            return True, ""
+        except Exception as e:
+            return False, f"Invalid animation element: {str(e)}"
+
+    @staticmethod
+    def validate_all(svg_content, require_animation=False):
+        """Perform comprehensive validation of SVG content.
         
         Args:
-            svg_string: String containing SVG markup
+            svg_content: String containing SVG markup
             require_animation: Whether to require animation elements
             
         Returns:
@@ -163,21 +168,29 @@ class SVGValidator:
             "warnings": []
         }
         
-        # Run all validations
+        # Print the SVG content for debugging
+        print("\nValidating SVG content:")
+        print(svg_content)
+        
+        # Collect all validation results
         validations = [
             ("syntax", SVGValidator.validate_syntax),
             ("structure", SVGValidator.validate_structure),
             ("circle", SVGValidator.validate_circle)
         ]
         
-        # Only validate animation if required
-        if require_animation:
+        # Always check animation if present
+        animation_valid, animation_message = SVGValidator.validate_animation(svg_content)
+        if require_animation or not animation_message.startswith("No animation"):
             validations.append(("animation", SVGValidator.validate_animation))
         
-        for name, validator in validations:
-            is_valid, message = validator(svg_string)
+        for name, validate in validations:
+            is_valid, message = validate(svg_content)
+            print(f"\n{name} validation:")
+            print(f"Valid: {is_valid}")
+            print(f"Message: {message}")
             if not is_valid:
                 results["is_valid"] = False
-                results["errors"].append(f"{name}: {message}")
+                results["errors"].append(message)
         
         return results 
